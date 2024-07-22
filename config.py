@@ -18,3 +18,5 @@ class ExcelSettings:
 class WebSettings:
     timeout = 15 #s for reaching the site
     additional_wait = 5 #s
+
+run_every = 3600 #s

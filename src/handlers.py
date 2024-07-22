@@ -247,26 +247,16 @@ class ExcelDownloadHandler:
         self.output_excel_handler.save()
 
 
-def dev_manual():
-    dev_handler = OneHandler("TORGI_1_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
-    # DEBUG
-    with open("sample.htm", "r") as f:
-        dev_handler.source = f.read()
-    res, cnt = dev_handler.parse()
-    dev_handler.excel_handler.append_df(res)
-    print(dev_handler.excel_handler.table)
+# def dev_manual():
+#     dev_handler = OneHandler("TORGI_1_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
+#     # DEBUG
+#     with open("sample.htm", "r") as f:
+#         dev_handler.source = f.read()
+#     res, cnt = dev_handler.parse()
+#     dev_handler.excel_handler.append_df(res)
+#     print(dev_handler.excel_handler.table)
 
-def dev():
-    dev_handler = OneHandler("TORGI_1_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
-    dev_handler.complete_workflow()
-
-    # dev_handler = OneHandler("TORGI_2_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
-    # dev_handler.complete_workflow()
-
-def dev_gov_ru():
-    h = ExcelDownloadHandler("TORGI_GOV_RU", filename="test_output/inv_mos_dev.xlsx")
-    h.complete_workflow()
-
+    
 if __name__ == "__main__":
-    #dev_manual()
-    dev()
+    # dev_manual()
+    pass
