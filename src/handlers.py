@@ -27,7 +27,7 @@ from src.logger import logger
 from src.timer import timered, Timeout
 from src.fileops import ExcelTableHandler
 from config import urls, WebSettings
-from src.utils import first, get_tmp_name
+from src.utils import first, get_tmp_name, random_wait
 
 class BaseSiteHandler:
     def __init__(self, site_id, filename=None):
@@ -35,7 +35,7 @@ class BaseSiteHandler:
         self.site_id = site_id
         self.excel_handler = ExcelTableHandler(filename, site_id=site_id)
         self.is_paginated = False
-        self.url = self.get_url()
+        self.url, self.max_pages = self.get_url()
         self.source = ""
 
         self.launchable = self.url != "Failed"
@@ -48,18 +48,21 @@ class BaseSiteHandler:
         ret = urls.get(self.site_id)
         if not ret:
             logger.error(f'No url found for {self.site_id} using following parameter: {param}. Parser will not work')
-            return "Failed"
+            return "Failed", None
 
         if isinstance(ret, str):
-            return ret
+            return ret, None
         
         if ret.get("paginator") != None:
             self.is_paginated = True
-            return ret.get("paginator")
+            max_pages = ret.get("max_pages")
+            return ret.get("paginator"), max_pages
 
-        return ret.get("url")
+        return ret.get("url"), None
 
-    def get_source(self, page_num=1) -> str:
+    def get_source(self, page_num=1, wait=False) -> str:
+        logger.trace(f"Launching Selenium")
+
         options = Options()
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
@@ -70,6 +73,9 @@ class BaseSiteHandler:
         except Exception as e:
             logger.error(f"Failed to start Selenium Chrome (web browser) for site {self.site_id}. Exception: {e}")
             return "Failed"
+        
+        if wait:
+            random_wait()
 
         url_to_get = self.url
         if self.is_paginated:
@@ -95,6 +101,7 @@ class BaseSiteHandler:
             logger.warning(f"Tried to run workflow for site {self.site_id}, but it's not launchable. Check earlier logs for errors")
             return
 
+        logger.info(f"Started updating from site {self.site_id}")
         obtained_count = 1
         page_num = 1
         while obtained_count:
@@ -102,7 +109,7 @@ class BaseSiteHandler:
                 #source = timered(self.get_source, WebSettings.timeout)
                 self.get_source(page_num)
                 ret, obtained_count = self.parse()
-                logger.info(f"Obtained {obtained_count} elements from page {page_num}")
+                logger.info(f"Obtained {obtained_count} elements from page {page_num} / {('...', self.max_pages)[bool(self.max_pages)]}")
 
                 self.excel_handler.append_df(ret)
                 self.save()
@@ -115,13 +122,95 @@ class BaseSiteHandler:
                 obtained_count = 0
 
             page_num += 1
+            if self.max_pages and page_num > self.max_pages:
+                break
 
     def save(self):
         self.excel_handler.table.to_excel(self.filename, index=False)
 
 
+class AvitoHandler(BaseSiteHandler):
+    def complete_workflow(self):
+        if not self.launchable:
+            logger.warning(f"Tried to run workflow for site {self.site_id}, but it's not launchable. Check earlier logs for errors")
+            return
+
+        random_wait()
+
+        obtained_count = 1
+        page_num = 1
+        while obtained_count:
+            try:
+                #source = timered(self.get_source, WebSettings.timeout)
+                self.get_source(page_num, wait=True)
+                ret, obtained_count = self.parse()
+                logger.info(f"Obtained {obtained_count} elements from page {page_num} / {('...', self.max_pages)[bool(self.max_pages)]}")
+
+                self.excel_handler.append_df(ret)
+                self.save()
+            except Timeout:
+                logger.error(f"Could not get source code from {self.site_id}: site takes to long to connect. Please check access")
+            finally:
+                self.driver.quit()
+            
+            if not self.is_paginated:
+                obtained_count = 0
+
+            page_num += 1
+            random_wait()
+
+            if self.max_pages and page_num > self.max_pages:
+                break
+
+    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов']):
+        def parse_item(item):
+            outp = []
+            # Ссылка
+            link = f'{self.url.split("/")[0]}//{self.url.split("/")[2]}/{item.findAll("a", {"itemprop": "url"})[0].attrs["href"]}'
+            
+            # Площадь  и цена
+            price_root = item.findAll("span", class_="price-root-RA1pj")
+            cost = price_root.findAll("meta", {"itemprop": "price"}).attrs["content"]
+            cost_per_sqm = price_root.findAll("p", class_="styles-module-root-YczkZ styles-module-size_s-xb_uK styles-module-size_s-_z7mI stylesMarningNormal-module-root-S7NIr stylesMarningNormal-module-paragraph-s-Yhr2e styles-module-noAccent-LowZ8")[0].get_text(strip=True)
+            cost_per_sqm = float("".join(str(cost_per_sqm).split(" ₽")[0].split(" ")))
+            area = float(cost) / cost_per_sqm
+            area = f"{area:.2f} м²"
+
+            # Адрес
+            addr = item.findAll("div", {"data-marker": "item-address"})[0].findAll("span")[0].get_text(strip=True)
+
+
+            purp = ""
+            # Назначение
+            name_text = item.findAll("h3", {"itemprop": "name"})[0].get_text(strip=True).lower()
+            if any([x in name_text for x in ("свободного назначения", "свободное назначение", "ПСН"):
+                purp = "Свободное"
+
+            endt = item.findAll("div", class_="uid-text-small uid-text-gray")[0]
+            if not endt.get_text(strip=True).split(": ")[-1] == "Торги завершены":
+                endt = endt.findAll("span")[0].get_text(strip=True).split(": ")[-1]
+            else:
+                endt = endt.get_text(strip=True).split(": ")[-1]
+                
+            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt]]
+
+        self.soup = BeautifulSoup(self.source)
+        items = self.soup.findAll('div', {"data-marker": "item"})
+        results = []
+        for item in items:
+            try:
+                results.append(parse_item(item))
+                # print("__________--\nitem|||||||||||||||||\n", item)
+            except:
+                logger.error(f"Problem parsing item from site {self.site_id}. Skipping item...")
+        results_dict = None# dict(zip(cols, [list(x) for x in zip(*results)]))
+        
+        return results_dict, len(results)
+
+        
 class OneHandler(BaseSiteHandler):
     def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов']):
+        logger.trace(f"Parsing source code")
         def parse_item(item):
             outp = []
             # Ссылка

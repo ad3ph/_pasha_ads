@@ -1,5 +1,5 @@
 from src.logger import logger
-from src.handlers import ExcelDownloadHandler, OneHandler
+from src.handlers import ExcelDownloadHandler, OneHandler, AvitoHandler
 from tests.tests import dummy_1, dummy_2, dummy_3
 import time
 from config import run_every
@@ -26,7 +26,14 @@ def main():
         if run_every - ((time.monotonic() - starttime)) < 0:
             logger.warning(f"The update took longer than {run_every}. Must be an error!")  
         time.sleep(max(run_every - ((time.monotonic() - starttime)), 0))
-    
+
+def dev():
+    ah = AvitoHandler("AVITO", filename="test_output/avito.xlsx")
+    # ah.complete_workflow()
+    with open("avito_smpl.html", "r") as f:
+        ah.source = f.read()
+    ah.parse()
+
 if __name__ == "__main__":
     main()
-
+    # dev()
