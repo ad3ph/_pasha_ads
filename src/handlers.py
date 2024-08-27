@@ -22,12 +22,14 @@ from selenium.common.exceptions import TimeoutException
 import unicodedata
 import time
 import pandas as pd
+import re
 
 from src.logger import logger
 from src.timer import timered, Timeout
 from src.fileops import ExcelTableHandler
 from config import urls, WebSettings
-from src.utils import first, get_tmp_name, random_wait
+from src.utils import first, get_tmp_name, random_wait, remove_spaces, get_dates_span
+
 
 class BaseSiteHandler:
     def __init__(self, site_id, filename=None):
@@ -35,6 +37,7 @@ class BaseSiteHandler:
         self.site_id = site_id
         self.excel_handler = ExcelTableHandler(filename, site_id=site_id)
         self.is_paginated = False
+        self.is_date_parametrized = False
         self.url, self.max_pages = self.get_url()
         self.source = ""
 
@@ -52,11 +55,17 @@ class BaseSiteHandler:
 
         if isinstance(ret, str):
             return ret, None
-        
+
         if ret.get("paginator") != None:
             self.is_paginated = True
             max_pages = ret.get("max_pages")
             return ret.get("paginator"), max_pages
+
+        if ret.get("date_parametrized") != None:
+            date_offset = ret.get("date_offset")
+            start_date, end_date = get_dates_span(date_offset)
+            self.start_date, self.end_date = start_date, end_date
+            return ret.get("date_parametrized").format(start_date, end_date), None    
 
         return ret.get("url"), None
 
@@ -162,37 +171,30 @@ class AvitoHandler(BaseSiteHandler):
             if self.max_pages and page_num > self.max_pages:
                 break
 
-    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов']):
+    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов', 'Цена за м2']):
         def parse_item(item):
             outp = []
             # Ссылка
-            link = f'{self.url.split("/")[0]}//{self.url.split("/")[2]}/{item.findAll("a", {"itemprop": "url"})[0].attrs["href"]}'
+            link = f'{self.url.split("/")[0]}//{self.url.split("/")[2]}{item.findAll("a", {"itemprop": "url"})[0].attrs["href"]}'
             
             # Площадь  и цена
-            price_root = item.findAll("span", class_="price-root-RA1pj")
-            cost = price_root.findAll("meta", {"itemprop": "price"}).attrs["content"]
+            price_root = item.findAll("span", class_="price-root-RA1pj")[0]
+            cost = price_root.findAll("meta", {"itemprop": "price"})[0].attrs["content"]
             cost_per_sqm = price_root.findAll("p", class_="styles-module-root-YczkZ styles-module-size_s-xb_uK styles-module-size_s-_z7mI stylesMarningNormal-module-root-S7NIr stylesMarningNormal-module-paragraph-s-Yhr2e styles-module-noAccent-LowZ8")[0].get_text(strip=True)
-            cost_per_sqm = float("".join(str(cost_per_sqm).split(" ₽")[0].split(" ")))
+            cost_per_sqm = float("".join(unicodedata.normalize("NFKD", str(cost_per_sqm)).split(" ₽")[0].split(" ")))
             area = float(cost) / cost_per_sqm
             area = f"{area:.2f} м²"
 
             # Адрес
             addr = item.findAll("div", {"data-marker": "item-address"})[0].findAll("span")[0].get_text(strip=True)
 
-
-            purp = ""
             # Назначение
             name_text = item.findAll("h3", {"itemprop": "name"})[0].get_text(strip=True).lower()
-            if any([x in name_text for x in ("свободного назначения", "свободное назначение", "ПСН"):
-                purp = "Свободное"
+            purp = understand_purpose(name_text)
 
-            endt = item.findAll("div", class_="uid-text-small uid-text-gray")[0]
-            if not endt.get_text(strip=True).split(": ")[-1] == "Торги завершены":
-                endt = endt.findAll("span")[0].get_text(strip=True).split(": ")[-1]
-            else:
-                endt = endt.get_text(strip=True).split(": ")[-1]
-                
-            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt]]
+            endt = ""
+
+            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt, str(cost_per_sqm)]]
 
         self.soup = BeautifulSoup(self.source)
         items = self.soup.findAll('div', {"data-marker": "item"})
@@ -203,13 +205,12 @@ class AvitoHandler(BaseSiteHandler):
                 # print("__________--\nitem|||||||||||||||||\n", item)
             except:
                 logger.error(f"Problem parsing item from site {self.site_id}. Skipping item...")
-        results_dict = None# dict(zip(cols, [list(x) for x in zip(*results)]))
+        results_dict = dict(zip(cols, [list(x) for x in zip(*results)]))
         
         return results_dict, len(results)
 
-        
 class OneHandler(BaseSiteHandler):
-    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов']):
+    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов', 'Цена за м2']):
         logger.trace(f"Parsing source code")
         def parse_item(item):
             outp = []
@@ -238,8 +239,16 @@ class OneHandler(BaseSiteHandler):
                 endt = endt.findAll("span")[0].get_text(strip=True).split(": ")[-1]
             else:
                 endt = endt.get_text(strip=True).split(": ")[-1]
-                
-            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt]]
+
+            if area and cost:
+                try:
+                    cost_per_sqm = int(remove_spaces(unicodedata.normalize("NFKD", cost)).split("руб.")[0].split(",")[0]) / float(remove_spaces(area.split(" м²")[0].replace(",", ".")))
+                    cost_per_sqm = f"{cost_per_sqm:.1f} руб за м2"
+                except ValueError:
+                    logger.warning(f"Couldn't calculate cost per square meter for an item")
+                    cost_per_sqm = ""
+                    
+            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt, cost_per_sqm]]
 
         self.soup = BeautifulSoup(self.source)
         items = self.soup.findAll('a', class_='uid-tenders-card uid-tenders-card_with-image') # May be moved to a text config file: {"site_id": {"item_tag": "a", "item_class": "...", ...}}
@@ -334,6 +343,76 @@ class ExcelDownloadHandler:
     def save(self):
         self.output_excel_handler.append_df(self.downloaded_table)
         self.output_excel_handler.save()
+
+
+
+class ThreeHandler(BaseSiteHandler):
+    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов', 'Цена за м2']):
+        logger.trace(f"Parsing source code")
+        def parse_item(item):
+            outp = []
+            desc = item.findAll("p", class_="card__excerpt")[0].findAll("a")[0]
+            # Ссылка
+            link = desc.attrs["href"]
+            desc_text = desc.get_text()
+            
+            try:
+                area = desc_text.split("Общая площадь: ")[1].split(" общ. пл")[0]
+            except IndexError:
+                try:
+                    area = desc_text.lower().split("площадью ")[1].split(" м")[0]
+                except IndexError:
+                    try:
+                        area = desc_text.lower().split("пл. ")[1].split(" м")[0]
+                    except:
+                        logger.warning(f"Failed to extract area for item {link}")
+                        area = '-'                        
+
+            area_num = area.split(" м²")[0]
+            try:
+                area_num = float(area_num)
+            except ValueError:
+                area_num = 1.
+
+            # Стоимость
+            cost = item.findAll("p", class_="bid__value")[0].get_text(strip=True)
+            cost_num = remove_spaces(cost.split(" ₽")[0].replace(",", "."))
+            try:
+                cost_num = float(cost_num)
+            except ValueError:
+                cost_num = 1.            
+
+            cost_per_sqm = f"{(cost_num / area_num):.2f}"
+
+            # Адрес
+            header3 = item.findAll("h3", class_="card__title")[0].get_text()
+
+            try:
+                part_with_addr = re.split('адрес[\у\ \-\:]?([- ])', header3)[1]
+                addr = re.split("\n | ; | к.н. | кадастровый | цена | : | ", part_with_addr, re.IGNORECASE)
+            except:
+                logger.warning(f"Failed to extract address for item {link} from following text: {header3}")
+
+            # Назначение
+            purp = understand_purpose(desc_text)
+
+            try:
+                endt = f"между {self.start_date} и {self.end_date}"
+            except AttributeError:
+                endt = ""
+
+            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt, cost_per_sqm]]
+
+        self.soup = BeautifulSoup(self.source)
+        items = self.soup.findAll('div', class_='card__wrapper')
+        results = []
+        for item in items:
+            try:
+                results.append(parse_item(item))
+            except:
+                logger.error(f"Problem parsing item from site {self.site_id}. Skipping item...")
+        results_dict = dict(zip(cols, [list(x) for x in zip(*results)]))
+        return results_dict, len(results)
 
 
 # def dev_manual():

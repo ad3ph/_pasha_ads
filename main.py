@@ -32,7 +32,9 @@ def dev():
     # ah.complete_workflow()
     with open("avito_smpl.html", "r") as f:
         ah.source = f.read()
-    ah.parse()
+    res, cnt = ah.parse()
+    ah.excel_handler.append_df(res)
+    ah.excel_handler.save()
 
 if __name__ == "__main__":
     main()

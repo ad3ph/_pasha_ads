@@ -12,8 +12,13 @@ urls = {
         "url": """https://www.avito.ru/moskva/kommercheskaya_nedvizhimost/prodam-ASgBAgICAUSwCNJW?cd=1&f=ASgBAQECAkSwCNJW8hKg2gECQJ7DDSSI2TmG2TmI9BE0zIGLA8qBiwPIgYsDAUXGmgwXeyJmcm9tIjo1MDAwMDAwLCJ0byI6MH0&p=1""",
         "paginator": """https://www.avito.ru/moskva/kommercheskaya_nedvizhimost/prodam-ASgBAgICAUSwCNJW?cd=1&f=ASgBAQECAkSwCNJW8hKg2gECQJ7DDSSI2TmG2TmI9BE0zIGLA8qBiwPIgYsDAUXGmgwXeyJmcm9tIjo1MDAwMDAwLCJ0byI6MH0&p={}""",
         "max_pages": 4
-        }
+        },
+    "TORGI_ROSSII": {
+        "url": """https://xn----etbpba5admdlad.xn--p1ai/search?search=&categorie_childs%5B%5D=8&trades-section=&trades-type=&begin-price-from=35000000&begin-price-to=&current-price-from=&current-price-to=&begin_bid_from=&begin_bid_to=&end_bid_from=01.01.2024&end_bid_to=30.06.2024&debtor_type=&debtor_name=&debtor_inn=&group_org=&organizer_name=&arbitr_inn=""",
+        "date_parametrized": """https://xn----etbpba5admdlad.xn--p1ai/search?search=&categorie_childs%5B%5D=8&trades-section=&trades-type=&begin-price-from=35000000&begin-price-to=&current-price-from=&current-price-to=&begin_bid_from=&begin_bid_to=&end_bid_from={}&end_bid_to={}&debtor_type=&debtor_name=&debtor_inn=&group_org=&organizer_name=&arbitr_inn=""",
+        "date_offset": 14 #days
     }
+}
 class ExcelSettings:
     safety_save = False # True - save the excel every time something is being added to the table
     remove_duplicates = False # True - check for duplicates upon addition of new entries into the tables
@@ -28,3 +33,14 @@ class WebSettings:
     avito_random_time_max = 5
 
 run_every = 3600*24 #s
+
+
+purpose_keywords = {
+    "Свободное": ["свободного назначения", "свободное назначение", "псн"],
+    "ГАБ": ["гaб"],
+    "Торговое помещение": ["торгового помещения", "торговое помещение", "ритейл", "retail", "торговая площадь", "торговой площади"],
+    "Офисное помещение": ["офис", "офисное помещение", "офисная площадь"],
+    "Складское помещение": ["склад", "складское помещение"],
+    "Жилое помещение": ["жилой", "жилое помещение", "квартира"],
+    "Производственное помещение": ["производственное", "производственное помещение"]
+}
