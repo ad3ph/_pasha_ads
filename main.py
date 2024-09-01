@@ -3,8 +3,12 @@ from src.handlers import ExcelDownloadHandler, OneHandler, ThreeHandler, FourHan
 from tests.tests import dummy_1, dummy_2, dummy_3
 import time
 from config import run_every
+import os
 
 def main():
+    if not os.path.exists("tmp"):
+        os.mkdir("tmp")
+    
     im1_handler = OneHandler("TORGI_1_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
     im2_handler = OneHandler("TORGI_2_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
     t_gov = ExcelDownloadHandler("TORGI_GOV_RU", filename="test_output/inv_mos_dev.xlsx")
@@ -12,8 +16,8 @@ def main():
     tb = FourHandler("TBANKROT", filename="test_output/inv_mos_dev.xlsx")
     ah = AvitoHandler("AVITO", filename="test_output/avito.xlsx")
 
-    #handlers = (im1_handler, im2_handler, t_gov, tr, tb, ah)
-    handlers = [t_gov]
+    handlers = (im1_handler, im2_handler, t_gov, tr, tb, ah)
+    # handlers = [t_gov]
 
     while True:
         starttime = time.monotonic()

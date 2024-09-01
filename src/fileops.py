@@ -74,6 +74,7 @@ class ExcelTableHandler:
                 db = pd.read_excel(path, sheet_name='Worksheet')[['Площадь, м2', 'Стоимость', 'Ссылка']]
             except:
                 logger.warning(f"Site: {self.site_id}. Couldn't check for duplicates with file {path}: error reading file")
+                continue
 
             for index, row in self.table.iterrows():
                 is_duplicate = db[(db['Ссылка'] == row['Ссылка'])].shape[0] > 0

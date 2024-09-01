@@ -15,9 +15,7 @@ urls = {
         "paginator": config['TORGI_2_INVESTMOSCOW']['paginator'],
         "max_pages": int(config['TORGI_2_INVESTMOSCOW']['max_pages'])
     },
-    "TORGI_GOV_RU": {
-        "url": config['TORGI_GOV_RU']['url']
-            },
+    "TORGI_GOV_RU": config['TORGI_GOV_RU']['url'],
     "AVITO": {
         "url": config['AVITO']['url'],
         "paginator": config['AVITO']['paginator'],
@@ -40,7 +38,8 @@ urls = {
 class ExcelSettings:
     safety_save = config.getboolean('ExcelSettings', 'safety_save')
     remove_duplicates = config.getboolean('ExcelSettings', 'remove_duplicates')
-    checklist = config.get('ExcelSettings', 'checklist').split(',')
+    checklist = config.get('ExcelSettings', '').split(',')
+    default_cols = config['ExcelSettings']['default_cols'].split(', ')
 
 class WebSettings:
     timeout = config.getint('WebSettings', 'timeout')

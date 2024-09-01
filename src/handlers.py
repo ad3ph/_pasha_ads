@@ -294,9 +294,10 @@ class ExcelDownloadHandler:
         self.save()
 
     def download(self):
+        print(self.url)
         req = requests.get(self.url, allow_redirects=True)
         if not req.ok:
-            logger.error(f"Couldn't get XLSX from site {site_id}. Request status: {req.status_code}")
+            logger.error(f"Couldn't get XLSX from site {self.site_id}. Request status: {req.status_code}")
 
         self.downloaded_file_name = f"tmp/{get_tmp_name()}.xlsx"
         with open(self.downloaded_file_name, "wb") as f:
