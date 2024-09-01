@@ -5,6 +5,7 @@
 /*/*/__pycache__/*
 *.pyc
 */*.pyc
+
 /log
 /s
 /Скрипт для Вани.ipynb
