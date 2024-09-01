@@ -17,6 +17,7 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 import unicodedata
@@ -27,8 +28,8 @@ import re
 from src.logger import logger
 from src.timer import timered, Timeout
 from src.fileops import ExcelTableHandler
-from config import urls, WebSettings
-from src.utils import first, get_tmp_name, random_wait, remove_spaces, get_dates_span
+from config import urls, WebSettings, ExcelSettings, TBANKROTcredentials
+from src.utils import first, get_tmp_name, random_wait, remove_spaces, get_dates_span, understand_purpose, understand_address
 
 
 class BaseSiteHandler:
@@ -62,8 +63,7 @@ class BaseSiteHandler:
             return ret.get("paginator"), max_pages
 
         if ret.get("date_parametrized") != None:
-            date_offset = ret.get("date_offset")
-            start_date, end_date = get_dates_span(date_offset)
+            start_date, end_date = get_dates_span(ret.get("date_offset"), ret.get("date_format"))
             self.start_date, self.end_date = start_date, end_date
             return ret.get("date_parametrized").format(start_date, end_date), None    
 
@@ -82,7 +82,8 @@ class BaseSiteHandler:
         except Exception as e:
             logger.error(f"Failed to start Selenium Chrome (web browser) for site {self.site_id}. Exception: {e}")
             return "Failed"
-        
+
+
         if wait:
             random_wait()
 
@@ -91,13 +92,21 @@ class BaseSiteHandler:
             url_to_get = self.url.format(page_num)
         
         logger.debug(f"Getting URL request {url_to_get}")
-        self.driver.get(url_to_get)
+        self.driver.get(url_to_get)        
         
         WebDriverWait(self.driver, WebSettings.timeout).until(lambda x: self.driver.execute_script("return document.readyState;") == "complete")
+
+        if WebSettings.do_scroll:
+            y = 1000
+            for timer in range(0,20):
+                self.driver.execute_script("window.scrollTo(0, "+str(y)+")")
+                y += 1000  
+                random_wait()
 
         time.sleep(WebSettings.additional_wait)        
 
         source = self.driver.page_source
+                
         self.driver.quit()
         self.source = source
         return source
@@ -121,6 +130,10 @@ class BaseSiteHandler:
                 logger.info(f"Obtained {obtained_count} elements from page {page_num} / {('...', self.max_pages)[bool(self.max_pages)]}")
 
                 self.excel_handler.append_df(ret)
+
+            
+                if ExcelSettings.remove_duplicates:
+                    self.excel_handler.check_duplicates(ExcelSettings.checklist)
                 self.save()
             except Timeout:
                 logger.error(f"Could not get source code from {self.site_id}: site takes to long to connect. Please check access")
@@ -157,7 +170,7 @@ class AvitoHandler(BaseSiteHandler):
 
                 self.excel_handler.append_df(ret)
                 self.save()
-            except Timeout:
+            except TimeoutException:
                 logger.error(f"Could not get source code from {self.site_id}: site takes to long to connect. Please check access")
             finally:
                 self.driver.quit()
@@ -178,10 +191,14 @@ class AvitoHandler(BaseSiteHandler):
             link = f'{self.url.split("/")[0]}//{self.url.split("/")[2]}{item.findAll("a", {"itemprop": "url"})[0].attrs["href"]}'
             
             # Площадь  и цена
-            price_root = item.findAll("span", class_="price-root-RA1pj")[0]
+            price_root = [x for x in item.findAll("span") if any(["price-root" in y for y in x.attrs.get("class", [])])]
+            price_root = price_root[0]
+
             cost = price_root.findAll("meta", {"itemprop": "price"})[0].attrs["content"]
-            cost_per_sqm = price_root.findAll("p", class_="styles-module-root-YczkZ styles-module-size_s-xb_uK styles-module-size_s-_z7mI stylesMarningNormal-module-root-S7NIr stylesMarningNormal-module-paragraph-s-Yhr2e styles-module-noAccent-LowZ8")[0].get_text(strip=True)
-            cost_per_sqm = float("".join(unicodedata.normalize("NFKD", str(cost_per_sqm)).split(" ₽")[0].split(" ")))
+
+            cost_per_sqm = price_root.findAll("p")[0].get_text(strip=True)
+            
+            cost_per_sqm = float("".join(unicodedata.normalize("NFKD", str(cost_per_sqm)).split(" ₽")[0].split("₽")[0].split(" ")))
             area = float(cost) / cost_per_sqm
             area = f"{area:.2f} м²"
 
@@ -315,6 +332,7 @@ class ExcelDownloadHandler:
         # Применяем функцию к столбцу 'Описание' и создаем новый столбец 'Площадь'
         self.downloaded_table['Площадь'] = self.downloaded_table['Описание лота'].apply(self.extract_area)
         self.downloaded_table['Площадь'] = self.downloaded_table['Площадь'].str.replace(' ', '')
+        self.downloaded_table['Площадь'] = self.downloaded_table['Площадь'].str.replace('–', '-')
         self.downloaded_table['Площадь'] = self.downloaded_table['Площадь'].str.replace('-', '')
         self.downloaded_table['Площадь'] = self.downloaded_table['Площадь'].str.replace(',', '.').astype(float)
 
@@ -345,7 +363,6 @@ class ExcelDownloadHandler:
         self.output_excel_handler.save()
 
 
-
 class ThreeHandler(BaseSiteHandler):
     def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов', 'Цена за м2']):
         logger.trace(f"Parsing source code")
@@ -368,7 +385,7 @@ class ThreeHandler(BaseSiteHandler):
                         logger.warning(f"Failed to extract area for item {link}")
                         area = '-'                        
 
-            area_num = area.split(" м²")[0]
+            area_num = area.split(" м²")[0].split(" кв")[0]
             try:
                 area_num = float(area_num)
             except ValueError:
@@ -386,11 +403,10 @@ class ThreeHandler(BaseSiteHandler):
 
             # Адрес
             header3 = item.findAll("h3", class_="card__title")[0].get_text()
-
+            addr = ""
             try:
-                part_with_addr = re.split('адрес[\у\ \-\:]?([- ])', header3)[1]
-                addr = re.split("\n | ; | к.н. | кадастровый | цена | : | ", part_with_addr, re.IGNORECASE)
-            except:
+                addr = understand_address(header3)
+            except IndexError:
                 logger.warning(f"Failed to extract address for item {link} from following text: {header3}")
 
             # Назначение
@@ -405,6 +421,123 @@ class ThreeHandler(BaseSiteHandler):
 
         self.soup = BeautifulSoup(self.source)
         items = self.soup.findAll('div', class_='card__wrapper')
+        results = []
+        for item in items:
+            try:
+                results.append(parse_item(item))
+            except:
+                logger.error(f"Problem parsing item from site {self.site_id}. Skipping item...")
+        results_dict = dict(zip(cols, [list(x) for x in zip(*results)]))
+        return results_dict, len(results)
+
+
+
+class FourHandler(BaseSiteHandler):
+    def get_source(self, page_num=1, wait=False) -> str:
+        logger.trace(f"Launching Selenium")
+
+        options = Options()
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        
+        try:
+            self.driver = webdriver.Chrome(options=options)
+        except Exception as e:
+            logger.error(f"Failed to start Selenium Chrome (web browser) for site {self.site_id}. Exception: {e}")
+            return "Failed"
+
+
+        if wait:
+            random_wait()
+
+        url_to_get = self.url
+        if self.is_paginated:
+            url_to_get = self.url.format(page_num)
+        
+        logger.debug(f"Getting URL request {url_to_get}")
+        self.driver.get(url_to_get)
+        
+        WebDriverWait(self.driver, WebSettings.timeout).until(lambda x: self.driver.execute_script("return document.readyState;") == "complete")
+
+        time.sleep(WebSettings.additional_wait)        
+
+        # We'll need to log in
+        self.driver.find_element(By.XPATH, "//a[@class='login_url']").click()
+        time.sleep(WebSettings.input_wait)
+        self.driver.find_element(By.XPATH, "//input[@id='lg-mail']").send_keys(TBANKROTcredentials.login)
+        time.sleep(WebSettings.input_wait)
+        self.driver.find_element(By.XPATH, "//input[@id='lg-pas']").send_keys(TBANKROTcredentials.password)
+        time.sleep(WebSettings.input_wait)
+        self.driver.find_element(By.XPATH, "//div[@id='login-btn']").click()
+        WebDriverWait(self.driver, WebSettings.timeout).until(lambda x: self.driver.execute_script("return document.readyState;") == "complete")
+        time.sleep(WebSettings.additional_wait)
+
+        # 100 items on one page
+        select = Select(self.driver.find_element(By.ID, 'pageItemCount'))
+        select.select_by_visible_text("100")
+        time.sleep(WebSettings.additional_wait)
+
+        source = self.driver.page_source
+                
+        self.driver.quit()
+        self.source = source
+        return source
+
+
+    def parse(self, cols=['Площадь', 'Стоимость', 'Адрес', 'Назначение', 'Ссылка', 'Дата окончания торгов', 'Цена за м2']):
+        logger.trace(f"Parsing source code")
+        def parse_item(item):
+            outp = []
+            
+            # Ссылка
+            link = "https://tbankrot.ru" + item.findAll("a", class_="lot_num")[0].attrs['href']
+            
+            try:
+                area = item.findAll("div", class_="lot_row row_kad analysis")[0].findAll("span")[1].get_text()
+            except IndexError:
+                area = "1"
+
+            area_num = area.split(" ")[0]
+            try:
+                dim = area.split(" ")[1]
+            except IndexError:
+                dim = "ед."
+                
+            if area_num.replace(".", "").isdigit():
+                area_num = float(area_num)
+            else:
+                area_num = 1.
+
+            # Стоимость
+            cost = item.findAll("div", class_="current_price")[0].findAll("span")[0].get_text()
+            cost_num = remove_spaces(cost.split(" ₽")[0].replace(",", "."))
+            try:
+                cost_num = float(cost_num)
+            except ValueError:
+                cost_num = 1.            
+
+            if not area_num == 0:
+                cost_per_sqm = f"{(cost_num / area_num):.2f} руб за {dim}"
+            else:
+                cost_per_sqm = "0 руб за " + dim
+
+            # Адрес
+            desc = item.findAll("div", class_="lot_description")[0].findAll("div", class_="text")[0].get_text()
+            addr = understand_address(desc)
+
+            # Назначение
+            purp = understand_purpose(desc)
+
+            try:
+                endt = f"между {self.start_date} и {self.end_date}"
+            except AttributeError:
+                endt = ""
+
+            return [unicodedata.normalize("NFKD", x) for x in [area, cost, addr, purp, link, endt, cost_per_sqm]]
+
+        self.soup = BeautifulSoup(self.source)
+        items = self.soup.findAll("div", class_="lot_container")
         results = []
         for item in items:
             try:

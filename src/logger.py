@@ -1,2 +1,2 @@
 from loguru import logger
-logger.add("log/log.txt", level="TRACE", rotation="1day")
+logger.add("log/log.txt", level="DEBUG", rotation="1day")

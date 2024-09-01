@@ -65,6 +65,23 @@ class ExcelTableHandler:
         if safety_save:
             self.save()
 
+    def check_duplicates(self, list_of_paths):
+        # Initialize the 'Duplicate' column to 'No'
+        self.table['Дубликат'] = ''
+
+        for path in list_of_paths:
+            try:
+                db = pd.read_excel(path, sheet_name='Worksheet')[['Площадь, м2', 'Стоимость', 'Ссылка']]
+            except:
+                logger.warning(f"Site: {self.site_id}. Couldn't check for duplicates with file {path}: error reading file")
+
+            for index, row in self.table.iterrows():
+                is_duplicate = db[(db['Ссылка'] == row['Ссылка'])].shape[0] > 0
+                ## TODO: обрабатывать еще и примерную похожесть стоимости и площади 
+                if is_duplicate:
+                    self.table.at[index, 'Duplicate'] = '1'
+                    break
+
     def save(self):
         self.table.to_excel(self.filename, index=False)
 

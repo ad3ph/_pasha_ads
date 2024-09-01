@@ -3,6 +3,7 @@ import time
 from config import WebSettings, purpose_keywords
 from src.logger import logger
 from datetime import datetime, timedelta
+import re
 
 def get_tmp_name(length=12):
     chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
@@ -17,7 +18,9 @@ def random_wait():
     logger.info(f"Waiting {wait} seconds...")
     time.sleep(wait)
 
-def get_dates_span(date_offset):
+def get_dates_span(date_offset, f="dd.mm.yyyy"):
+    date_f = "%Y-%m-%d" if f == "yyyy-mm-dd" else "%d.%m.%Y"
+    
     today = datetime.now()
     
     # Calculate the dates
@@ -25,8 +28,8 @@ def get_dates_span(date_offset):
     end_date = today + timedelta(days=date_offset)
     
     # Format the dates in "dd.mm.yyyy"
-    start_date_str = start_date.strftime("%d.%m.%Y")
-    end_date_str = end_date.strftime("%d.%m.%Y")
+    start_date_str = start_date.strftime(date_f)
+    end_date_str = end_date.strftime(date_f)
     
     return (start_date_str, end_date_str)
 
@@ -35,3 +38,11 @@ def understand_purpose(text):
         if any([x in text for x in purpose_words_list]):    
             return purpose_name
     return ""
+
+def understand_address(text):
+    addr = ""
+    splitted = re.split('адрес[у -\:][ -\:]', text)
+    if len(splitted) > 1:
+        part_with_addr = splitted[1]
+        addr = re.split("(\n|;|к.н.|кадастровый|цена|:)", part_with_addr, re.IGNORECASE)[0]
+    return addr

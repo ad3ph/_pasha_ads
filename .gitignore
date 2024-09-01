@@ -1,8 +1,10 @@
 /.conda
 /.vscode
-/__pycache__
-/*/__pycache__
-/*/*/__pycache__
+/__pycache__/*
+/*/__pycache__/*
+/*/*/__pycache__/*
+*.pyc
+*/*.pyc
 /log
 /s
 /Скрипт для Вани.ipynb
