@@ -130,7 +130,6 @@ class BaseSiteHandler:
                 logger.info(f"Obtained {obtained_count} elements from page {page_num} / {('...', self.max_pages)[bool(self.max_pages)]}")
 
                 self.excel_handler.append_df(ret)
-
             
                 if ExcelSettings.remove_duplicates:
                     self.excel_handler.check_duplicates(ExcelSettings.checklist)

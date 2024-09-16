@@ -35,10 +35,20 @@ urls = {
     }
 }
 
+excel_paths = {
+    "TORGI_1_INVESTMOSCOW": config['TORGI_1_INVESTMOSCOW']['excel'],
+    "TORGI_2_INVESTMOSCOW": config['TORGI_2_INVESTMOSCOW']['excel'],
+    "TORGI_GOV_RU": config['TORGI_GOV_RU']['excel'],
+    "TORGI_ROSSII": config['TORGI_ROSSII']['excel'],
+    "TBANKROT": config['TBANKROT']['excel'],
+    "AVITO": config['AVITO']['excel'],
+
+}
+
 class ExcelSettings:
     safety_save = config.getboolean('ExcelSettings', 'safety_save')
     remove_duplicates = config.getboolean('ExcelSettings', 'remove_duplicates')
-    checklist = config.get('ExcelSettings', '').split(',')
+    checklist = config.get('ExcelSettings', 'checklist').split(',')
     default_cols = config['ExcelSettings']['default_cols'].split(', ')
 
 class WebSettings:

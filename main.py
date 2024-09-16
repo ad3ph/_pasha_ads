@@ -2,19 +2,19 @@ from src.logger import logger
 from src.handlers import ExcelDownloadHandler, OneHandler, ThreeHandler, FourHandler, AvitoHandler
 from tests.tests import dummy_1, dummy_2, dummy_3
 import time
-from config import run_every
+from config import run_every, excel_paths
 import os
 
 def main():
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
     
-    im1_handler = OneHandler("TORGI_1_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
-    im2_handler = OneHandler("TORGI_2_INVESTMOSCOW", filename="test_output/inv_mos_dev.xlsx")
-    t_gov = ExcelDownloadHandler("TORGI_GOV_RU", filename="test_output/inv_mos_dev.xlsx")
-    tr = ThreeHandler("TORGI_ROSSII", filename="test_output/inv_mos_dev.xlsx")
-    tb = FourHandler("TBANKROT", filename="test_output/inv_mos_dev.xlsx")
-    ah = AvitoHandler("AVITO", filename="test_output/avito.xlsx")
+    im1_handler = OneHandler(site_id:="TORGI_1_INVESTMOSCOW", filename=excel_paths[site_id])
+    im2_handler = OneHandler(site_id:="TORGI_2_INVESTMOSCOW", filename=excel_paths[site_id])
+    t_gov = ExcelDownloadHandler(site_id:="TORGI_GOV_RU", filename=excel_paths[site_id])
+    tr = ThreeHandler(site_id:="TORGI_ROSSII", filename=excel_paths[site_id])
+    tb = FourHandler(site_id:="TBANKROT", filename=excel_paths[site_id])
+    ah = AvitoHandler(site_id:="AVITO", filename=excel_paths[site_id])
 
     handlers = (im1_handler, im2_handler, t_gov, tr, tb, ah)
     # handlers = [t_gov]
@@ -24,6 +24,7 @@ def main():
         logger.info(f"Started updating. Next start in {run_every} seconds")
         for handler in handlers:
             try:
+                handler.excel_handler.load()
                 handler.complete_workflow()
                 # dummy_1()
                 # dummy_2()

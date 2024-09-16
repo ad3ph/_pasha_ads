@@ -30,17 +30,19 @@ class ExcelTableHandler:
             logger.warning(f"Working with this site for the first time, file {self.filename} doesn't exist yet.")
 
         self.load()
-        
+
     def load(self):
         if not self.existed_upon_creation:
             self.table = pd.DataFrame(columns=self.cols)
             self.table.to_excel(self.filename, index=False)
         self.table = pd.read_excel(self.filename)
-        logger.info(f"Loaded table for site {self.site_id}")
+        logger.info(f"Loaded table for site {self.site_id}, shape: {self.table.shape}")
         
         cols_in_file = self.table.columns.tolist()
         if self.existed_upon_creation and not cols_in_file == self.cols:
             newly_asked_cols = [x for x in self.cols if not x in cols_in_file]
+            if newly_asked_cols == []:
+                return
             logger.error(f"Table for site {self.site_id} has columns {cols_in_file}, which doesn't match necessary columns list {self.cols}. Adding new columns {newly_asked_cols}")
             self.table[newly_asked_cols] = nan
             self.cols = self.table.columns.tolist()
@@ -70,6 +72,8 @@ class ExcelTableHandler:
         self.table['Дубликат'] = ''
 
         for path in list_of_paths:
+            if not path:
+                break
             try:
                 db = pd.read_excel(path, sheet_name='Worksheet')[['Площадь, м2', 'Стоимость', 'Ссылка']]
             except:
